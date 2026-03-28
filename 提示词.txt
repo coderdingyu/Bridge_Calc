@@ -1,0 +1,377 @@
+你现在是一个严谨的 Python 代码代理，需要在一个现有的桥梁病害 Mask R-CNN 项目中，直接实现“量化计算模块”，并完成代码落地、接入、保存结果、自检。
+
+你的目标不是讨论思路，而是：
+1. 读取并理解现有仓库结构；
+2. 在不破坏现有训练/推理/评估流程的前提下，实现一个可运行的量化模块；
+3. 把量化模块接入当前推理脚本；
+4. 输出结构化量化结果（JSON/CSV）和可视化结果；
+5. 尽可能鲁棒、工程化、可复现；
+6. 修改完成后自检并给出运行说明。
+
+====================
+一、项目背景与硬约束
+====================
+
+这是一个桥梁表观病害智能检测项目，现有技术栈为 Python + PyTorch + Mask R-CNN + OpenCV。
+现有项目已经完成训练，正在进行推理和后续评估。
+现有工程里至少包含：
+- train_final.py
+- inference_final.py
+- evaluate_map.py
+- labelme2coco.py
+- auto_pipeline.py
+- wait_training.py
+
+现有项目中的目标类别为 6 类病害，类别名在 inference_final.py 中已有定义：
+- Breakage
+- ReinForcement
+- Comb
+- Crack
+- Seepage
+- Hole
+
+现有推理脚本 inference_final.py 的行为是：
+- 加载最佳模型；
+- 对单张图片或整个文件夹进行推理；
+- 按 CONFIDENCE_THRESHOLD 过滤；
+- 保存可视化结果到 test_results 目录。
+
+现有评估脚本 evaluate_map.py 用于 COCO mAP 评估。
+现有 auto_pipeline.py 会在训练完成后串联推理和评估。
+
+你必须保证：
+- 不要破坏现有 train_final.py；
+- 不要破坏现有 evaluate_map.py；
+- 不要破坏现有 auto_pipeline.py 的主流程；
+- 不要修改类别定义的语义；
+- 不要把量化逻辑写死到训练脚本中；
+- 量化模块必须作为推理后的后处理组件接入；
+- 保持原有推理可视化功能继续可用；
+- 所有新增代码必须清晰、可维护、带必要注释；
+- 如果仓库实际内容与我描述略有差异，以仓库实际文件为准，但必须保持上述目标不变。
+
+====================
+二、你必须实现的功能
+====================
+
+你需要实现一个完整的量化计算模块，用于将实例分割 mask 转换为工程可用的几何量化结果。
+
+核心原则：
+- 不允许只用 bbox 粗略测量裂缝；
+- 对 Crack 类必须使用“骨架长度 + 局部宽度估计”的方式；
+- 对面状病害优先使用 mask/contour 计算面积、周长、方向、外接矩形等；
+- 物理单位换算必须是“可选”的：如果没有提供比例尺，则只输出像素单位；如果提供比例尺，则同时输出物理单位；
+- 绝对不能在没有比例尺的情况下伪造 mm、cm、m 单位结果。
+
+你需要实现至少以下能力：
+
+1. 新建量化模块文件
+建议新建：
+- quantification.py
+或
+- bridge_quantify.py
+名称你自行判断，但必须清晰。
+
+2. 针对单个实例 mask 计算基础几何量
+至少包括：
+- area_px：像素面积
+- perimeter_px：像素周长
+- bbox_xyxy / bbox_xywh
+- centroid
+- orientation_deg
+- major_axis_px
+- minor_axis_px
+- compactness
+- extent 或 area_ratio_in_bbox
+
+3. 对 Crack 类实现精细量化
+Crack 类必须额外输出：
+- length_px
+- mean_width_px
+- max_width_px
+- p95_width_px
+- skeleton_pixel_count
+- branch_count（如果实现难度较大，可给近似实现，但不能乱写）
+- 说明字段 measurement_method="skeleton_distance_transform"
+
+Crack 的长度计算要求：
+- 不能用 bbox 长边替代；
+- 必须基于 skeleton / thinning / medial-axis 思路；
+- 尽量按 8 邻接图长度求和，水平垂直按 1、对角按 sqrt(2)；
+- 如果环境中无 skimage/scipy，提供不崩溃的 fallback；
+- 优先使用现有依赖，避免引入沉重依赖；
+- 如果必须新增依赖，必须非常轻量，并在最终说明中写明。
+
+Crack 的宽度计算要求：
+- 不能直接用 bbox 短边；
+- 必须基于 mask 的局部宽度估计；
+- 优先使用 distance transform；
+- 输出 mean_width_px / max_width_px / p95_width_px；
+- max_width_px 尽量避免被单点噪声污染，必要时可同时保留 raw max 和稳健 max，但至少要有 p95_width_px。
+
+4. 对非 Crack 类实现面状病害量化
+对 Breakage、ReinForcement、Comb、Seepage、Hole 等非 Crack 类，至少输出：
+- area_px
+- perimeter_px
+- major_axis_px
+- minor_axis_px
+- min_area_rect
+- orientation_deg
+- compactness
+- extent 或 bbox_fill_ratio
+
+5. 可选物理尺度换算
+量化模块必须支持两种模式：
+- 未提供比例尺：仅输出 px 单位
+- 提供比例尺：输出 px + physical 单位
+
+最少支持：
+- --mm-per-pixel 单值输入
+即：
+length_mm = length_px * mm_per_pixel
+width_mm = width_px * mm_per_pixel
+area_mm2 = area_px * mm_per_pixel^2
+
+你还需要为后续扩展预留接口：
+- 预留 scale_config / image_scale_map / per-image scale 的入口
+- 但当前不必强制实现复杂标定
+- 可以在代码中写清楚：未来可扩展 homography / calibration / per-image scale
+
+6. mask 预处理
+在测量前对 mask 做适度净化，避免毛刺和噪声影响结果：
+- 二值化
+- 去除极小连通域
+- 可选开闭运算
+- 保证不会把细裂缝全部抹掉
+- Crack 和非 Crack 的净化策略可以不同
+
+7. 输出结构化结果
+每张图像除原始可视化图外，还要输出结构化量化结果，建议：
+- 一个 image-level JSON
+- 一个全局汇总 CSV
+
+建议输出目录：
+- test_results/quant_json/
+- test_results/quant_csv/
+- test_results/quant_vis/
+
+每个实例至少包含：
+- image_name
+- instance_id
+- class_id
+- class_name
+- score
+- bbox
+- mask_area_px
+- geometry metrics
+- crack metrics（若为 Crack）
+- physical metrics（若有比例尺）
+- measurement_confidence
+- warnings
+
+8. 可视化增强
+在原有检测图基础上，新增量化可视化版本，至少展示：
+- 类别名
+- score
+- area_px
+- Crack 的 length/width（若适用）
+- 若提供比例尺，显示 mm/mm²
+要求：
+- 不要覆盖破坏原始 detected 图
+- 新增一个量化可视化输出版本
+- 文本布局尽量清晰，不要严重遮挡目标
+
+9. measurement_confidence
+你需要给每个实例一个简单、可解释的 measurement_confidence（0~1）。
+可以综合考虑：
+- detection score
+- mask 面积是否过小
+- 是否触边
+- mask 是否过于破碎
+- Crack skeleton 是否稳定
+- 是否成功完成宽度估计
+
+要求：
+- 逻辑清楚
+- 不要伪装成复杂 AI
+- 采用规则法即可
+- 如果无法可靠测量，confidence 降低并给 warning
+
+10. 异常处理
+必须处理：
+- 空 mask
+- 全零 mask
+- 极小目标
+- 触边目标
+- 多连通域
+- 读取失败
+- 比例尺缺失
+- 目录不存在
+- 单张图与批量图两种模式
+要求：
+- 不崩溃
+- 输出 warning
+- 跳过非法实例但不影响整图处理
+
+====================
+三、你必须如何接入现有代码
+====================
+
+请优先采用“最小侵入式修改”：
+
+1. 不重写整个 inference_final.py
+2. 保留原有 CLI 行为
+3. 在 inference 后、visualize_and_save 前后接入量化逻辑
+4. 保留原有 global_summary
+5. 新增可选命令行参数，例如：
+   --enable-quant
+   --mm-per-pixel
+   --save-json
+   --save-csv
+   --save-quant-vis
+   --min-mask-area
+参数名可适当调整，但必须清晰、可用、兼容原有命令
+
+要求：
+- 原有命令不加新参数时也能正常跑；
+- 开启量化后，额外产出量化结果；
+- 不影响 evaluate_map.py 的评估逻辑；
+- auto_pipeline.py 不必强制启用量化，但你可以为后续接入预留一行注释或可选参数。
+
+====================
+四、实现标准与代码质量要求
+====================
+
+请严格遵守：
+
+1. 先读仓库，再改代码
+你必须先阅读现有文件，确认实际函数、路径、变量名，再进行修改。
+不要凭空假设仓库结构。
+
+2. 代码风格
+- Python 3.8+
+- 函数化设计
+- 关键函数加 docstring
+- 变量命名清晰
+- 尽量加类型注解
+- 注释只写关键逻辑，不要废话
+
+3. 不要做这些事
+- 不要为了量化而改训练策略
+- 不要擅自改模型结构
+- 不要删除现有功能
+- 不要引入大型框架
+- 不要把所有逻辑塞进一个超长函数
+- 不要输出虚假的物理单位
+- 不要只返回 bbox 尺寸冒充裂缝长度宽度
+- 不要用随机数填充 confidence
+- 不要修改类名映射含义
+
+4. 可维护性
+请尽量把量化逻辑拆成这些层次：
+- mask_preprocess(...)
+- compute_basic_geometry(...)
+- compute_crack_metrics(...)
+- compute_region_metrics(...)
+- convert_physical_units(...)
+- estimate_measurement_confidence(...)
+- save_json_results(...)
+- append_csv_summary(...)
+具体命名可以微调，但结构要清晰。
+
+====================
+五、你最终必须产出的内容
+====================
+
+你必须直接在仓库中完成修改，并最终给出：
+
+1. 修改了哪些文件
+2. 新增了哪些文件
+3. 每个文件做了什么
+4. 关键实现点
+5. 如何运行
+6. 至少一条可直接复制执行的命令
+7. 如果某些能力因环境依赖缺失而采用 fallback，要明确说明
+8. 给出你自检的结果
+
+====================
+六、自检要求（必须执行）
+====================
+
+修改完后，请你自行检查以下事项：
+
+A. 代码层面
+- 是否能 import 成功
+- 是否存在明显语法错误
+- 是否有未定义变量
+- 是否有路径错误
+- 是否兼容单张图 / 文件夹输入
+- 是否在无比例尺时只输出 px
+- 是否在有比例尺时输出 physical metrics
+
+B. 功能层面
+- Crack 是否确实使用骨架/距离变换思路，而不是 bbox
+- 非 Crack 是否使用 contour/mask 面积等几何量
+- 原有 detected 图是否仍能输出
+- JSON/CSV 是否能保存
+- 量化可视化图是否能保存
+- 遇到异常实例是否不会导致整批中断
+
+C. 工程层面
+- 不影响 train_final.py
+- 不影响 evaluate_map.py
+- 不破坏 auto_pipeline.py 现有逻辑
+- 默认命令保持兼容
+
+如果你无法完整运行真实推理，请至少完成：
+- 静态代码检查
+- 对关键函数进行最小可执行自测
+- 给出未实际执行部分的诚实说明
+
+====================
+七、优先级
+====================
+
+如果时间或环境有限，请按这个优先级实现：
+P0：
+- inference 接入量化模块
+- Crack 长度/宽度
+- 非 Crack 面积/周长
+- JSON 输出
+- 无比例尺 / 有比例尺两种模式
+
+P1：
+- CSV 汇总
+- 量化可视化图
+- measurement_confidence
+- 更稳健的 mask 预处理
+
+P2：
+- 每图不同 scale 配置入口
+- 更细致的 warnings
+- 更完善的 branch_count 估计
+
+====================
+八、最终输出格式
+====================
+
+最后请按下面格式给我总结，不要只说“已完成”：
+
+1. 仓库分析结果
+2. 修改文件列表
+3. 新增文件列表
+4. 实现的量化指标列表
+5. 接入方式说明
+6. 运行命令
+7. 自检结果
+8. 已知限制
+9. 后续可增强点
+
+现在开始：
+先扫描仓库与相关脚本，再实施修改，然后自检，再输出最终结果。
+不要只给方案，直接落代码。
+
+补充要求：
+1. 优先少改现有文件，多新增独立模块；
+2. 如果实际仓库和描述不一致，以仓库实际内容为准，但保持“推理后处理量化接入”的总目标不变；
+3. 未经确认不要引入重依赖，优先使用 numpy、opencv、torch、标准库。

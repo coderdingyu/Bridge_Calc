@@ -1,0 +1,83 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   🚀 Mask R-CNN 全自动训练流程                              ║
+║                                                                              ║
+║  状态: ⏳ 正在进行中...  | 启动时间: 2026-03-27 20:00                       ║
+║  预计完成: 2026-03-28 00:00 (后续8小时)                                     ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+📊 实时监控命令（任选一个）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ 查看完整工作流进度（推荐）
+   tail -f /home/dingyu/Bridge_Calc/pipeline.log
+
+2️⃣ 查看详细训练日志
+   tail -f /home/dingyu/Bridge_Calc/training_new_final.log
+
+3️⃣ 查看自动流程并发问题
+   tail -f /home/dingyu/Bridge_Calc/auto_pipeline.log
+
+4️⃣ 查看生成的模型进度
+   watch -n 5 'ls -lh /home/dingyu/Bridge_Calc/models/'
+
+5️⃣ 查看推理结果生成进度
+   watch -n 5 'ls -lh /home/dingyu/Bridge_Calc/test_results/ | wc -l'
+
+
+🎯 流程执行步骤
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+第1阶段: 训练模型 (Epoch 1-10)
+   ✓ 已启动: train_final.py
+   ✓ 已启用: 验证集评估
+   ✓ 已配置: 自动保存最佳模型
+   ⏳ 预计耗时: 180-240 分钟
+
+第2阶段: 推理测试 (自动执行)
+   ✓ 脚本: inference_final.py
+   ✓ 模型: maskrcnn_bridge_best.pth
+   ✓ 数据: 1,113 张测试图像
+   ⏳ 预计耗时: 30-60 分钟
+
+第3阶段: 计算 mAP (自动执行)
+   ✓ 脚本: evaluate_map.py
+   ✓ 指标: BBox & Segmentation
+   ✓ 标准: COCO 官方评估
+   ⏳ 预计耗时: 30-60 分钟
+
+
+📂 关键文件位置
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+新训练的模型: /home/dingyu/Bridge_Calc/models/maskrcnn_bridge_*.pth
+推理结果:     /home/dingyu/Bridge_Calc/test_results/
+训练日志:     /home/dingyu/Bridge_Calc/training_new_final.log
+工作流日志:   /home/dingyu/Bridge_Calc/pipeline.log
+旧模型备份:   /home/dingyu/Bridge_Calc/old_models/
+
+
+🛑 如需中断
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 杀死自动流程
+kill -9 1044358
+
+# 杀死训练进程  
+pkill -f train_final.py
+
+
+✨ 完成标志
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+流程完成时会生成:
+✅ /home/dingyu/Bridge_Calc/models/maskrcnn_bridge_best.pth (169MB)
+✅ /home/dingyu/Bridge_Calc/test_results/*.jpg (1,113张)
+✅ pipeline.log 中显示:
+   🎉 完整流程已完成！
+   ✅ 推理完成！
+   ✅ mAP计算完成！
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  建议: 保持此终端打开，30分钟后查一次日志确认进度  📊
+═══════════════════════════════════════════════════════════════════════════════
