@@ -82,7 +82,7 @@ def main():
             score = scores[i]
             mask = masks[i]
             
-            if score < 0.5:
+            if score < 0.001:
                 continue
             
             # Convert box format from [x_min, y_min, x_max, y_max] to [x_min, y_min, width, height]
