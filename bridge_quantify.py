@@ -367,6 +367,9 @@ def quantify_instance(
 ) -> Dict[str, Any]:
     """量化单个实例"""
     is_crack = (class_id == CRACK_CLASS_ID)
+    has_valid_scale = mm_per_pixel is not None and mm_per_pixel > 0
+    scale_source = "user_input" if has_valid_scale else "pixel_only"
+    scale_value = float(mm_per_pixel) if has_valid_scale else None
 
     min_area = crack_min_area if is_crack else min_mask_area
     mask_clean = mask_preprocess(mask, is_crack=is_crack, min_area=min_area)
@@ -375,7 +378,8 @@ def quantify_instance(
         return {
             'image_name': image_name, 'instance_id': instance_id, 'class_id': class_id,
             'class_name': class_name, 'score': round(float(score), 4), 'bbox': bbox,
-            'error': 'mask too small after preprocessing', 'measurement_confidence': 0.0
+            'error': 'mask too small after preprocessing', 'measurement_confidence': 0.0,
+            'scale_source': scale_source, 'mm_per_pixel': scale_value
         }
     
     if is_crack:
@@ -396,7 +400,9 @@ def quantify_instance(
         'class_id': class_id, 'class_name': class_name,
         'score': round(float(score), 4), 'bbox': [float(x) for x in bbox],
         'measurement_confidence': confidence,
-        'warnings': conf_warnings
+        'warnings': conf_warnings,
+        'scale_source': scale_source,
+        'mm_per_pixel': scale_value
     }
     result.update(metrics)
     
@@ -549,11 +555,14 @@ def quantify_predictions(
             )
             results.append(result)
         except Exception as e:
+            has_valid_scale = mm_per_pixel is not None and mm_per_pixel > 0
             results.append({
                 'image_name': image_name, 'instance_id': idx,
                 'class_id': class_id, 'class_name': class_name,
                 'score': round(float(score), 4), 'bbox': box.tolist(),
-                'error': str(e), 'measurement_confidence': 0.0
+                'error': str(e), 'measurement_confidence': 0.0,
+                'scale_source': 'user_input' if has_valid_scale else 'pixel_only',
+                'mm_per_pixel': float(mm_per_pixel) if has_valid_scale else None
             })
     
     if save_json:

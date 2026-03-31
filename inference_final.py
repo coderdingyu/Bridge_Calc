@@ -115,7 +115,7 @@ def main():
         print("  python inference_final.py <model.pth> [输入路径] [选项]")
         print("\n选项:")
         print("  --enable-quant      启用量化模块")
-        print("  --mm-per-pixel      像素到毫米比例尺")
+        print("  --mm-per-pixel      用户输入的像素-物理尺寸转换系数（mm/pixel，不输入时仅输出像素单位）")
         print("  --save-json         保存量化JSON结果")
         print("  --save-csv          保存量化CSV汇总")
         print("  --save-quant-vis    保存量化可视化图")
@@ -131,12 +131,16 @@ def main():
     parser.add_argument('model_path', help='模型路径')
     parser.add_argument('input_path', nargs='?', default=DEFAULT_TEST_DIR, help='输入图片或文件夹路径')
     parser.add_argument('--enable-quant', action='store_true', help='启用量化模块')
-    parser.add_argument('--mm-per-pixel', type=float, default=None, help='像素到毫米比例尺（如 0.5 表示每个像素0.5mm）')
+    parser.add_argument('--mm-per-pixel', type=float, default=None, help='用户输入的像素-物理尺寸转换系数，单位 mm/pixel；不输入时仅输出像素单位')
     parser.add_argument('--save-json', action='store_true', help='保存量化JSON结果')
     parser.add_argument('--save-csv', action='store_true', help='保存量化CSV汇总')
     parser.add_argument('--save-quant-vis', action='store_true', help='保存量化可视化图')
     parser.add_argument('--min-mask-area', type=int, default=10, help='最小mask面积阈值')
     args = parser.parse_args()
+    
+    if args.mm_per_pixel is not None and args.mm_per_pixel <= 0:
+        print("❌ 参数错误: --mm-per-pixel 必须大于 0")
+        sys.exit(1)
     
     model_path = args.model_path
     input_path = args.input_path
@@ -153,7 +157,7 @@ def main():
     quant_enabled = args.enable_quant and HAS_QUANTIFY
     if quant_enabled:
         print("\n🔍 量化模块已启用")
-        if args.mm_per_pixel:
+        if args.mm_per_pixel is not None:
             print(f"📏 比例尺: {args.mm_per_pixel} mm/pixel")
         if args.save_csv:
             csv_path = os.path.join(OUTPUT_DIR, 'quant_csv', 'summary.csv')
@@ -220,4 +224,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

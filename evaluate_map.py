@@ -120,12 +120,26 @@ def main():
     coco_eval_bbox.evaluate()
     coco_eval_bbox.accumulate()
     coco_eval_bbox.summarize()
-    
+    print_per_class_ap(coco_eval_bbox, coco_gt, "BBox per-class AP")
+
     print("\n" + "-" * 20 + " 2. 多边形掩码 (Segmentation) 抠图精度 " + "-" * 20)
     coco_eval_segm = COCOeval(coco_gt, coco_dt, 'segm')
     coco_eval_segm.evaluate()
     coco_eval_segm.accumulate()
     coco_eval_segm.summarize()
+    print_per_class_ap(coco_eval_segm, coco_gt, "Segm per-class AP")
+
+def print_per_class_ap(coco_eval, coco_gt, title="Per-class AP"):
+    print(f"\n===== {title} =====")
+    cat_ids = coco_gt.getCatIds()
+    cat_id_to_name = {cat["id"]: cat["name"] for cat in coco_gt.loadCats(cat_ids)}
+
+    precisions = coco_eval.eval["precision"]
+    for idx, cat_id in enumerate(cat_ids):
+        precision = precisions[:, :, idx, 0, -1]
+        precision = precision[precision > -1]
+        ap = np.mean(precision) if precision.size else float("nan")
+        print(f"{cat_id:>2} {cat_id_to_name[cat_id]:<15} AP={ap:.4f}")
 
 if __name__ == "__main__":
     main()

@@ -24,7 +24,7 @@ warnings.filterwarnings('ignore')
 DATA_DIR = "/data1/dingyu/datasets/labelme"
 NUM_CLASSES = 7  # 6 种病害 + 1 个背景
 BATCH_SIZE = 2   
-EPOCHS = 10
+EPOCHS = 24
 LEARNING_RATE = 0.005
 WEIGHT_DECAY = 0.0005
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -207,7 +207,7 @@ def main():
     # 学习率调度
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer,
-        step_size=3,
+        step_size=8,
         gamma=0.1
     )
     
